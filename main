@@ -1,14 +1,14 @@
-program Studienleistung_Puristisch;
+program ueb10_korrigiert;
+
+{$APPTYPE CONSOLE}
+{$R+,Q+,X-}
 
 uses
   System.SysUtils;
 
-
-// DATENTYPEN UND GLOBALE VARIABLEN 
-
+//Datentypen und globale Variable
 var
   g_Speicherzaehler: Integer = 0;
-
 type
   TLeistung = record
     Nummer: string[5];
@@ -19,7 +19,6 @@ type
     Data: TLeistung;
     Next: PLeistungNode;
   end;
-
   TModulSP = record
     Nummer: string[5];
     ECTS: Byte;
@@ -30,9 +29,7 @@ type
     Next: PModulSPNode;
   end;
 
-
-// SPEICHERVERWALTUNG 
-
+//Speicherverwaltung
 procedure GibLeistungslisteFrei(var Kopf: PLeistungNode);
 var
   Aktuell: PLeistungNode;
@@ -45,7 +42,6 @@ begin
     Dec(g_Speicherzaehler);
   end;
 end;
-
 procedure GibModulSPListeFrei(var Kopf: PModulSPNode);
 var
   Aktuell: PModulSPNode;
@@ -60,9 +56,8 @@ begin
 end;
 
 
-// DATEI-ROUTINEN (als Prozeduren mit out-Parameter)
-
-procedure LeseStudentenDatei(const Dateiname: string; out Name, Fachrichtung: string; out Leistungsliste: PLeistungNode; out Erfolg: Boolean);
+// Datei-Routinen
+function LeseStudentenDatei(const Dateiname: string; out Name, Fachrichtung: string; out Leistungsliste: PLeistungNode): Boolean;
 var
   F: TextFile;
   Zeile, NotenStr, ModulNr: string;
@@ -71,7 +66,7 @@ var
   NeuerKnoten: PLeistungNode;
 begin
   Leistungsliste := nil;
-  Erfolg := False; // Standardmäßig von einem Fehler ausgehen
+  LeseStudentenDatei := False; // Standardmäßig von einem Fehler ausgehen
 
   if FileExists(Dateiname) then
   begin
@@ -80,7 +75,6 @@ begin
       Reset(F);
       if not Eof(F) then Readln(F, Name) else raise Exception.Create('Datei ist leer.');
       if not Eof(F) then Readln(F, Fachrichtung) else raise Exception.Create('Fachrichtung fehlt.');
-
       while not Eof(F) do
       begin
         Readln(F, Zeile);
@@ -91,32 +85,24 @@ begin
           NotenStr := Copy(Zeile, DoppelpunktPos + 1, Length(Zeile));
           if TryStrToFloat(NotenStr, Note) then
           begin
-            New(NeuerKnoten);
-            Inc(g_Speicherzaehler);
+            New(NeuerKnoten); Inc(g_Speicherzaehler);
             NeuerKnoten^.Data.Nummer := ModulNr;
             NeuerKnoten^.Data.Note := Note;
             NeuerKnoten^.Next := Leistungsliste;
             Leistungsliste := NeuerKnoten;
-          end
-          else
-            raise Exception.Create('Ungültige Note in Zeile: ' + Zeile);
-        end
-        else
-          raise Exception.Create('Ungültiges Format in Zeile: ' + Zeile);
+          end else raise Exception.Create('Ungültige Note in Zeile: ' + Zeile);
+        end else raise Exception.Create('Ungültiges Format in Zeile: ' + Zeile);
       end;
-      Erfolg := True;
+      LeseStudentenDatei := True; // Erfolgreich
     except
-      on E: Exception do
-        Writeln('FEHLER beim Lesen der Studentendatei: ', E.Message);
+      on E: Exception do Writeln('FEHLER beim Lesen der Studentendatei: ', E.Message);
     finally
       CloseFile(F);
     end;
-  end
-  else
-    Writeln('FEHLER: Die Datei "', Dateiname, '" wurde nicht gefunden.');
+  end else Writeln('FEHLER: Die Datei "', Dateiname, '" wurde nicht gefunden.');
 end;
 
-procedure LeseStudiengangDatei(const Fachrichtung: string; out ModulListe: PModulSPNode; out Erfolg: Boolean);
+function LeseStudiengangDatei(const Fachrichtung: string; out ModulListe: PModulSPNode): Boolean;
 var
   F: file of TModulSP;
   Dateiname: string;
@@ -124,8 +110,8 @@ var
   NeuerKnoten: PModulSPNode;
 begin
   ModulListe := nil;
-  Erfolg := False;
-  Dateiname := Fachrichtung + '.sp';
+  LeseStudiengangDatei := False;
+  Dateiname := ExtractFilePath(ParamStr(0)) + Fachrichtung + '.sp';
 
   if FileExists(Dateiname) then
   begin
@@ -135,90 +121,22 @@ begin
       while not Eof(F) do
       begin
         Read(F, EinModul);
-        New(NeuerKnoten);
-        Inc(g_Speicherzaehler);
+        New(NeuerKnoten); Inc(g_Speicherzaehler);
         NeuerKnoten^.Data := EinModul;
         NeuerKnoten^.Next := ModulListe;
         ModulListe := NeuerKnoten;
       end;
-      Erfolg := True;
+      LeseStudiengangDatei := True;
     except
-      on E: Exception do
-        Writeln('FEHLER beim Lesen der Studiengangsdatei: ', E.Message);
+      on E: Exception do Writeln('FEHLER beim Lesen der Studiengangsdatei: ', E.Message);
     finally
       CloseFile(F);
     end;
-  end
-  else
-    Writeln('FEHLER: Die Studiengangsdatei "', Dateiname, '" wurde nicht gefunden.');
-end;
-
-procedure FindeECTS(ModulNummer: string; ModulListe: PModulSPNode; out ECTS: Byte);
-var
-  Aktuell: PModulSPNode;
-  Gefunden: Boolean; // Lokale Steuer-Variable für die Schleife
-begin
-  ECTS := 0;
-  Gefunden := False;
-  Aktuell := ModulListe;
-  while (Aktuell <> nil) and (not Gefunden) do
-  begin
-    if Aktuell^.Data.Nummer = ModulNummer then
-    begin
-      ECTS := Aktuell^.Data.ECTS;
-      Gefunden := True; // Stoppt die Schleife beim nächsten Durchlauf
-    end;
-    Aktuell := Aktuell^.Next;
-  end;
-end;
-
-procedure SchreibeZeugnisDatei(const Name, Dateiname: string; Leistungsliste: PLeistungNode; ModulListe: PModulSPNode);
-var
-  F: TextFile;
-  AktLeistung: PLeistungNode;
-  Gesamtnote, SummeNoteMalECTS, SummeECTS: Real;
-  ECTS: Byte;
-begin
-  SummeNoteMalECTS := 0;
-  SummeECTS := 0;
-
-  AktLeistung := Leistungsliste;
-  while AktLeistung <> nil do
-  begin
-    FindeECTS(AktLeistung^.Data.Nummer, ModulListe, ECTS);
-    SummeNoteMalECTS := SummeNoteMalECTS + (AktLeistung^.Data.Note * ECTS);
-    SummeECTS := SummeECTS + ECTS;
-    AktLeistung := AktLeistung^.Next;
-  end;
-
-  if SummeECTS > 0 then
-    Gesamtnote := SummeNoteMalECTS / SummeECTS
-  else
-    Gesamtnote := 0;
-
-  AssignFile(F, Dateiname);
-  try
-    Rewrite(F);
-    Writeln(F, Name); Writeln(F, '');
-    AktLeistung := Leistungsliste;
-    while AktLeistung <> nil do
-    begin
-      Writeln(F, AktLeistung^.Data.Nummer, ':', FloatToStrF(AktLeistung^.Data.Note, ffFixed, 5, 1));
-      AktLeistung := AktLeistung^.Next;
-    end;
-    Writeln(F, '');
-    Writeln(F, 'Gesamtnote: ', FloatToStrF(Gesamtnote, ffFixed, 5, 2));
-    Writeln('INFO: Zeugnisdatei "', Dateiname, '" wurde erfolgreich erstellt.');
-  except
-    on E: Exception do
-      Writeln('FEHLER: Konnte Zeugnisdatei nicht schreiben: ', E.Message);
-  finally
-    CloseFile(F);
-  end;
+  end else Writeln('FEHLER: Die Studiengangsdatei "', Dateiname, '" wurde nicht gefunden.');
 end;
 
 
-// HAUPTPROGRAMM 
+//main
 
 var
   StudentenDatei, StudentenName, StudentenFachrichtung: string;
@@ -227,60 +145,27 @@ var
   AnzahlBestanden, AnzahlGesamt: Integer;
   Fortschritt: Real;
   AktLeistung: PLeistungNode;
-  Erfolg: Boolean;
 begin
   Writeln('--- Programm zur Studienleistungsprüfung ---');
   Write('Bitte geben Sie den Dateinamen des Studenten ein (z.B. Student1.txt): ');
   Readln(StudentenDatei);
 
   try
-    LeseStudentenDatei(ExtractFilePath(ParamStr(0)) + StudentenDatei, StudentenName, StudentenFachrichtung, KopfLeistungen, Erfolg);
-
-    if Erfolg then
+    // Aufruf der Funktion. Das Ergebnis wird direkt in der if-Bedingung verwendet.
+    if LeseStudentenDatei(ExtractFilePath(ParamStr(0)) + StudentenDatei, StudentenName, StudentenFachrichtung, KopfLeistungen) then
     begin
       Writeln('INFO: Studentendatei erfolgreich gelesen. Name: ', StudentenName, ', Fachrichtung: ', StudentenFachrichtung);
-      LeseStudiengangDatei(ExtractFilePath(ParamStr(0)) + StudentenFachrichtung, KopfModule, Erfolg);
-    end;
 
-    if Erfolg then
-    begin
-      Writeln('INFO: Studiengangsdatei erfolgreich gelesen.');
-      AnzahlBestanden := 0;
-      AktLeistung := KopfLeistungen;
-      while AktLeistung <> nil do
+      if LeseStudiengangDatei(StudentenFachrichtung, KopfModule) then
       begin
-        if (AktLeistung^.Data.Note > 0) and (AktLeistung^.Data.Note <= 4.0) then
-          Inc(AnzahlBestanden);
-        AktLeistung := AktLeistung^.Next;
-      end;
-
-      AnzahlGesamt := 0;
-      var AktModul: PModulSPNode := KopfModule;
-      while AktModul <> nil do
-      begin
-        Inc(AnzahlGesamt);
-        AktModul := AktModul^.Next;
-      end;
-
-      if AnzahlGesamt > 0 then
-        Fortschritt := (AnzahlBestanden / AnzahlGesamt) * 100
-      else
-        Fortschritt := 0;
-
-      Writeln('-------------------------------------------');
-      Writeln('Ergebnis: ', FloatToStrF(Fortschritt, ffFixed, 5, 2), '% bei ', AnzahlBestanden, ' von ', AnzahlGesamt, ' bestandenen Leistungen.');
-      Writeln('-------------------------------------------');
-
-      if (AnzahlBestanden = AnzahlGesamt) and (AnzahlGesamt > 0) then
-      begin
-        SchreibeZeugnisDatei(StudentenName, ExtractFilePath(ParamStr(0)) + 'Zeugnis_' + StudentenName + '.txt', KopfLeistungen, KopfModule);
+        Writeln('INFO: Studiengangsdatei erfolgreich gelesen.');
+        //Komplette Auswertung hier
       end;
     end;
   finally
     Writeln('INFO: Räume Speicher auf...');
     GibLeistungslisteFrei(KopfLeistungen);
     GibModulSPListeFrei(KopfModule);
-
     if g_Speicherzaehler = 0 then
       Writeln('INFO: Speicherprüfung erfolgreich.')
     else
